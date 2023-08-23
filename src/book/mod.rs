@@ -99,7 +99,7 @@ impl MDBook {
         let root = book_root.into();
 
         let src_dir = root.join(&config.book.src);
-        let book = book::load_book(&src_dir, &config.build)?;
+        let book = book::load_book(src_dir, &config.build)?;
 
         let renderers = determine_renderers(&config);
         let preprocessors = determine_preprocessors(&config)?;
@@ -122,7 +122,7 @@ impl MDBook {
         let root = book_root.into();
 
         let src_dir = root.join(&config.book.src);
-        let book = book::load_book_from_disk(&summary, &src_dir)?;
+        let book = book::load_book_from_disk(&summary, src_dir)?;
 
         let renderers = determine_renderers(&config);
         let preprocessors = determine_preprocessors(&config)?;
@@ -196,21 +196,26 @@ impl MDBook {
         Ok(())
     }
 
-    /// Run the entire build process for a particular [`Renderer`].
-    pub fn execute_build_process(&self, renderer: &dyn Renderer) -> Result<()> {
-        let mut preprocessed_book = self.book.clone();
+    /// Run preprocessors and return the final book.
+    pub fn preprocess_book(&self, renderer: &dyn Renderer) -> Result<(Book, PreprocessorContext)> {
         let preprocess_ctx = PreprocessorContext::new(
             self.root.clone(),
             self.config.clone(),
             renderer.name().to_string(),
         );
-
+        let mut preprocessed_book = self.book.clone();
         for preprocessor in &self.preprocessors {
             if preprocessor_should_run(&**preprocessor, renderer, &self.config) {
                 debug!("Running the {} preprocessor.", preprocessor.name());
                 preprocessed_book = preprocessor.run(&preprocess_ctx, preprocessed_book)?;
             }
         }
+        Ok((preprocessed_book, preprocess_ctx))
+    }
+
+    /// Run the entire build process for a particular [`Renderer`].
+    pub fn execute_build_process(&self, renderer: &dyn Renderer) -> Result<()> {
+        let (preprocessed_book, preprocess_ctx) = self.preprocess_book(renderer)?;
 
         let name = renderer.name();
         let build_dir = self.build_dir_for(name);
@@ -258,7 +263,13 @@ impl MDBook {
 
     /// Run `rustdoc` tests on a specific chapter of the book, linking against the provided libraries.
     /// If `chapter` is `None`, all tests will be run.
-    pub fn test_chapter(&mut self, library_paths: Vec<&str>, externs: Vec<&str>, verbose: bool, chapter: Option<&str>) -> Result<()> {
+    pub fn test_chapter(
+        &mut self,
+        library_paths: Vec<&str>,
+        externs: Vec<&str>,
+        verbose: bool,
+        chapter: Option<&str>,
+    ) -> Result<()> {
         let library_args: Vec<&str> = (0..library_paths.len())
             .map(|_| "-L")
             .zip(library_paths.into_iter())
@@ -277,13 +288,25 @@ impl MDBook {
 
         let mut chapter_found = false;
 
-        // FIXME: Is "test" the proper renderer name to use here?
-        let preprocess_context =
-            PreprocessorContext::new(self.root.clone(), self.config.clone(), "test".to_string());
+        struct TestRenderer;
+        impl Renderer for TestRenderer {
+            // FIXME: Is "test" the proper renderer name to use here?
+            fn name(&self) -> &str {
+                "test"
+            }
 
-        let book = LinkPreprocessor::new().run(&preprocess_context, self.book.clone())?;
-        // Index Preprocessor is disabled so that chapter paths continue to point to the
-        // actual markdown files.
+            fn render(&self, _: &RenderContext) -> Result<()> {
+                Ok(())
+            }
+        }
+
+        // Index Preprocessor is disabled so that chapter paths
+        // continue to point to the actual markdown files.
+        self.preprocessors = determine_preprocessors(&self.config)?
+            .into_iter()
+            .filter(|pre| pre.name() != IndexPreprocessor::NAME)
+            .collect();
+        let (book, _) = self.preprocess_book(&TestRenderer)?;
 
         let mut failed = false;
         for item in book.iter() {
@@ -305,7 +328,7 @@ impl MDBook {
                 info!("Testing chapter '{}': {:?}", ch.name, chapter_path);
 
                 // write preprocessed file to tempdir
-                let path = temp_dir.path().join(&chapter_path);
+                let path = temp_dir.path().join(chapter_path);
                 let mut tmpf = utils::fs::create_file(&path)?;
                 tmpf.write_all(ch.content.as_bytes())?;
 
@@ -319,27 +342,20 @@ impl MDBook {
                 if let Some(edition) = self.config.rust.edition {
                     match edition {
                         RustEdition::E2015 => {
-                            cmd.args(&["--edition", "2015"]);
+                            cmd.args(["--edition", "2015"]);
                         }
                         RustEdition::E2018 => {
-                            cmd.args(&["--edition", "2018"]);
+                            cmd.args(["--edition", "2018"]);
                         }
                         RustEdition::E2021 => {
-                            cmd.args(&["--edition", "2021"]);
+                            cmd.args(["--edition", "2021"]);
                         }
                     }
                 } else {
                     warn!("Edition not set in book.toml [rust] section. Rustdoc will default to 2015, which probably not what you want.");
                 }
 
-                let command = cmd
-                    .get_args()
-                    .map(|x| x.to_string_lossy().into_owned())
-                    .collect::<Vec<String>>()
-                    .join(" ");
-
-                info!("Running `rustdoc {}`", command);
-
+                info!("Running {:?}", cmd);
                 let output = cmd.output()?;
 
                 if !output.status.success() {

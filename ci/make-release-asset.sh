@@ -17,7 +17,7 @@ then
   export "CARGO_TARGET_$(echo $target | tr a-z- A-Z_)_LINKER"=rust-lld
 fi
 export CARGO_PROFILE_RELEASE_LTO=true
-cargo build --bin mdbook --release --target $target
+cargo build --locked --bin mdbook --release --target $target
 cd target/$target/release
 case $1 in
   ubuntu*)
@@ -44,9 +44,10 @@ case $1 in
 esac
 cd ../..
 
-if [[ -z "$GITHUB_TOKEN" ]]
+if [[ -z "$GITHUB_ENV" ]]
 then
-  echo "$GITHUB_TOKEN not set, skipping deploy."
+  echo "GITHUB_ENV not set, run: gh release upload $TAG target/$asset"
 else
-  hub release edit -m "" --attach $asset $TAG
+  echo "MDBOOK_TAG=$TAG" >> $GITHUB_ENV
+  echo "MDBOOK_ASSET=target/$asset" >> $GITHUB_ENV
 fi
