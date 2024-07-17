@@ -30,7 +30,7 @@ fn mdbook_test_chapter() {
     let temp = DummyBook::new().with_passing_test(true).build().unwrap();
     let mut md = MDBook::load(temp.path()).unwrap();
 
-    let result = md.test_chapter(vec![], Some("Introduction"));
+    let result = md.test_chapter(vec![], Vec::new(), false, Some("Introduction"));
     assert!(
         result.is_ok(),
         "test_chapter failed with {}",
@@ -43,5 +43,7 @@ fn mdbook_test_chapter_not_found() {
     let temp = DummyBook::new().with_passing_test(true).build().unwrap();
     let mut md = MDBook::load(temp.path()).unwrap();
 
-    assert!(md.test_chapter(vec![], Some("Bogus Chapter Name")).is_err());
+    assert!(md
+        .test_chapter(vec![], Vec::new(), false, Some("Bogus Chapter Name"))
+        .is_err());
 }

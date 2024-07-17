@@ -112,16 +112,16 @@ panic!("oops!");
 These are particularly important when using [`mdbook test`] to test Rust examples.
 These use the same attributes as [rustdoc attributes], with a few additions:
 
-* `editable` — Enables the [editor].
-* `noplayground` — Removes the play button, but will still be tested.
-* `mdbook-runnable` — Forces the play button to be displayed.
+* `editable` --- Enables the [editor].
+* `noplayground` --- Removes the play button, but will still be tested.
+* `mdbook-runnable` --- Forces the play button to be displayed.
   This is intended to be combined with the `ignore` attribute for examples that should not be tested, but you want to allow the reader to run.
-* `ignore` — Will not be tested and no play button is shown, but it is still highlighted as Rust syntax.
-* `should_panic` — When executed, it should produce a panic.
-* `no_run` — The code is compiled when tested, but it is not run.
+* `ignore` --- Will not be tested and no play button is shown, but it is still highlighted as Rust syntax.
+* `should_panic` --- When executed, it should produce a panic.
+* `no_run` --- The code is compiled when tested, but it is not run.
   The play button is also not shown.
-* `compile_fail` — The code should fail to compile.
-* `edition2015`, `edition2018`, `edition2021` — Forces the use of a specific Rust edition.
+* `compile_fail` --- The code should fail to compile.
+* `edition2015`, `edition2018`, `edition2021` --- Forces the use of a specific Rust edition.
   See [`rust.edition`] to set this globally.
 
 [`mdbook test`]: ../cli/test.md
@@ -314,3 +314,51 @@ contents (sidebar) by including a `\{{#title ...}}` near the top of the page.
 ```hbs
 \{{#title My Title}}
 ```
+
+## HTML classes provided by mdBook
+
+<img class="right" src="images/rust-logo-blk.svg" alt="The Rust logo">
+
+### `class="left"` and `"right"`
+
+These classes are provided by default, for inline HTML to float images.
+
+```html
+<img class="right" src="images/rust-logo-blk.svg" alt="The Rust logo">
+```
+
+### `class="hidden"`
+
+HTML tags with class `hidden` will not be shown.
+
+```html
+<div class="hidden">This will not be seen.</div>
+```
+
+<div class="hidden">This will not be seen.</div>
+
+### `class="warning"`
+
+To make a warning or similar note stand out, wrap it in a warning div.
+
+```html
+<div class="warning">
+
+This is a bad thing that you should pay attention to.
+
+Warning blocks should be used sparingly in documentation, to avoid "warning
+fatigue," where people are trained to ignore them because they usually don't
+matter for what they're doing.
+
+</div>
+```
+
+<div class="warning">
+
+This is a bad thing that you should pay attention to.
+
+Warning blocks should be used sparingly in documentation, to avoid "warning
+fatigue," where people are trained to ignore them because they usually don't
+matter for what they're doing.
+
+</div>
