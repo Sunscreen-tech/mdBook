@@ -54,11 +54,13 @@ impl HtmlHandlebars {
                 .insert("git_repository_edit_url".to_owned(), json!(edit_url));
         }
 
-        let content = ch.content.clone();
-        let content = utils::render_markdown(&content, ctx.html_config.curly_quotes);
+        let content = utils::render_markdown(&ch.content, ctx.html_config.smart_punctuation());
 
-        let fixed_content =
-            utils::render_markdown_with_path(&ch.content, ctx.html_config.curly_quotes, Some(path));
+        let fixed_content = utils::render_markdown_with_path(
+            &ch.content,
+            ctx.html_config.smart_punctuation(),
+            Some(path),
+        );
         if !ctx.is_index && ctx.html_config.print.page_break {
             // Add page break between chapters
             // See https://developer.mozilla.org/en-US/docs/Web/CSS/break-before and https://developer.mozilla.org/en-US/docs/Web/CSS/page-break-before
@@ -165,7 +167,8 @@ impl HtmlHandlebars {
                     .to_string()
             }
         };
-        let html_content_404 = utils::render_markdown(&content_404, html_config.curly_quotes);
+        let html_content_404 =
+            utils::render_markdown(&content_404, html_config.smart_punctuation());
 
         let mut data_404 = data.clone();
         let base_url = if let Some(site_url) = &html_config.site_url {
@@ -203,7 +206,7 @@ impl HtmlHandlebars {
         Ok(())
     }
 
-    #[cfg_attr(feature = "cargo-clippy", allow(clippy::let_and_return))]
+    #[allow(clippy::let_and_return)]
     fn post_process(
         &self,
         rendered: String,
@@ -478,25 +481,6 @@ impl HtmlHandlebars {
     }
 }
 
-// TODO(mattico): Remove some time after the 0.1.8 release
-fn maybe_wrong_theme_dir(dir: &Path) -> Result<bool> {
-    fn entry_is_maybe_book_file(entry: fs::DirEntry) -> Result<bool> {
-        Ok(entry.file_type()?.is_file()
-            && entry.path().extension().map_or(false, |ext| ext == "md"))
-    }
-
-    if dir.is_dir() {
-        for entry in fs::read_dir(dir)? {
-            if entry_is_maybe_book_file(entry?).unwrap_or(false) {
-                return Ok(false);
-            }
-        }
-        Ok(true)
-    } else {
-        Ok(false)
-    }
-}
-
 impl Renderer for HtmlHandlebars {
     fn name(&self) -> &str {
         "html"
@@ -528,16 +512,6 @@ impl Renderer for HtmlHandlebars {
             }
             None => ctx.root.join("theme"),
         };
-
-        if html_config.theme.is_none()
-            && maybe_wrong_theme_dir(&src_dir.join("theme")).unwrap_or(false)
-        {
-            warn!(
-                "Previous versions of mdBook erroneously accepted `./src/theme` as an automatic \
-                 theme directory"
-            );
-            warn!("Please move your theme files to `./theme` for them to continue being used");
-        }
 
         let theme = theme::Theme::new(theme_dir);
 
@@ -647,6 +621,10 @@ fn make_data(
     data.insert(
         "language".to_owned(),
         json!(config.book.language.clone().unwrap_or_default()),
+    );
+    data.insert(
+        "text_direction".to_owned(),
+        json!(config.book.realized_text_direction()),
     );
     data.insert(
         "book_title".to_owned(),
@@ -924,6 +902,7 @@ fn add_playground_pre(
                         Some(RustEdition::E2015) => " edition2015",
                         Some(RustEdition::E2018) => " edition2018",
                         Some(RustEdition::E2021) => " edition2021",
+                        Some(RustEdition::E2024) => " edition2024",
                         None => "",
                     }
                 };
@@ -961,8 +940,9 @@ fn add_playground_pre(
 /// Modifies all `<code>` blocks to convert "hidden" lines and to wrap them in
 /// a `<span class="boring">`.
 fn hide_lines(html: &str, code_config: &Code) -> String {
-    let language_regex = Regex::new(r"\blanguage-(\w+)\b").unwrap();
-    let hidelines_regex = Regex::new(r"\bhidelines=(\S+)").unwrap();
+    static LANGUAGE_REGEX: Lazy<Regex> = Lazy::new(|| Regex::new(r"\blanguage-(\w+)\b").unwrap());
+    static HIDELINES_REGEX: Lazy<Regex> = Lazy::new(|| Regex::new(r"\bhidelines=(\S+)").unwrap());
+
     CODE_BLOCK_RE
         .replace_all(html, |caps: &Captures<'_>| {
             let text = &caps[1];
@@ -977,12 +957,12 @@ fn hide_lines(html: &str, code_config: &Code) -> String {
                 )
             } else {
                 // First try to get the prefix from the code block
-                let hidelines_capture = hidelines_regex.captures(classes);
+                let hidelines_capture = HIDELINES_REGEX.captures(classes);
                 let hidelines_prefix = match &hidelines_capture {
                     Some(capture) => Some(&capture[1]),
                     None => {
                         // Then look up the prefix by language
-                        language_regex.captures(classes).and_then(|capture| {
+                        LANGUAGE_REGEX.captures(classes).and_then(|capture| {
                             code_config.hidelines.get(&capture[1]).map(|p| p.as_str())
                         })
                     }
@@ -1088,6 +1068,8 @@ struct RenderItemContext<'a> {
 
 #[cfg(test)]
 mod tests {
+    use crate::config::TextDirection;
+
     use super::*;
     use pretty_assertions::assert_eq;
 
@@ -1298,5 +1280,11 @@ mod tests {
             );
             assert_eq!(&*got, *should_be);
         }
+    }
+
+    #[test]
+    fn test_json_direction() {
+        assert_eq!(json!(TextDirection::RightToLeft), json!("rtl"));
+        assert_eq!(json!(TextDirection::LeftToRight), json!("ltr"));
     }
 }
